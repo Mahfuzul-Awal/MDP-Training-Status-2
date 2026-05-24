@@ -47,6 +47,42 @@ st.markdown("""
     margin-bottom: 8px;
   }
   .crumb b { color: rgba(0,0,0,0.86); }
+  .legend-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.88rem;
+  }
+  .legend-table th {
+    background: #f0f4ff;
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 2px solid #d0d8f0;
+    font-weight: 600;
+    color: #333;
+  }
+  .legend-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #444;
+    vertical-align: top;
+  }
+  .legend-table tr:hover td {
+    background: #f7f9ff;
+  }
+  .num-badge {
+    display: inline-block;
+    background: #1f77b4;
+    color: white;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    text-align: center;
+    line-height: 22px;
+    font-size: 0.78rem;
+    font-weight: bold;
+    margin-right: 4px;
+  }
   footer { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
@@ -248,7 +284,7 @@ elif st.session_state.screen == "titles":
 
     card_open()
 
-    # Slider + total count
+    # Slider + total
     col_slider, col_info = st.columns([0.75, 0.25])
     with col_slider:
         bars_per_page = st.slider(
@@ -296,175 +332,80 @@ elif st.session_state.screen == "titles":
     # Slice data
     start = st.session_state.page_start
     title_slice = title_counts.iloc[start: start + bars_per_page].copy()
+    title_slice["#"] = range(start + 1, start + len(title_slice) + 1)
+    title_slice["Label"] = title_slice["#"].astype(str)
 
-    # Wrap long titles for display inside bars
-    def wrap_title(t, max_chars=18):
-        words = str(t).split()
-        lines, line = [], ""
-        for word in words:
-            if len(line) + len(word) + 1 <= max_chars:
-                line = (line + " " + word).strip()
-            else:
-                if line:
-                    lines.append(line)
-                line = word
-        if line:
-            lines.append(line)
-        return "<br>".join(lines)
-
-    title_slice["Short"] = title_slice["Training Title"].apply(wrap_title)
-
-    # Build chart with titles written vertically inside bars
+    # Chart — bars labeled with numbers only
     fig2 = px.bar(
         title_slice,
-        x="Training Title",
+        x="Label",
         y="Count",
-        text="Short",
-        custom_data=["Training Title", "Count"],
+        text="Count",
+        custom_data=["Training Title", "#"],
     )
-
     fig2.update_traces(
-        # Count number on top
-        textposition="inside",
-        textfont=dict(color="white", size=11),
-        insidetextanchor="start",
-        hovertemplate="<b>%{customdata[0]}</b><br>Count: %{customdata[1]}<extra></extra>",
+        textposition="outside",
+        cliponaxis=False,
         marker_color="#1f77b4",
         width=0.6,
-        cliponaxis=False,
+        hovertemplate="<b>#%{customdata[1]} %{customdata[0]}</b><br>Count: %{y}<extra></extra>",
     )
-
     fig2.update_layout(
-        xaxis=dict(
-            showticklabels=False,
-            title="",
-        ),
+        xaxis=dict(title="", tickfont=dict(size=13, color="#333")),
         yaxis_title="Count",
         bargap=0.25,
         clickmode="event+select",
         margin=dict(l=10, r=10, t=30, b=10),
-        hoverlabel=dict(font_size=16, bgcolor="white", bordercolor="rgba(0,0,0,0.25)"),
-        uniformtext_minsize=9,
+        hoverlabel=dict(font_size=15, bgcolor="white", bordercolor="rgba(0,0,0,0.25)"),
+        uniformtext_minsize=10,
         uniformtext_mode="hide",
-    )
-
-    # Count labels on top of bars
-    fig2.add_traces(
-        px.scatter(
-            title_slice,
-            x="Training Title",
-            y="Count",
-            text="Count",
-        ).update_traces(
-            mode="text",
-            textposition="top center",
-            textfont=dict(size=13, color="#333"),
-            hoverinfo="skip",
-            showlegend=False,
-        ).data
     )
 
     event2 = st.plotly_chart(
         fig2,
         key=f"titles_chart_{st.session_state.selected_status}_{start}_{bars_per_page}",
         use_container_width=True,
-        height=580,
+        height=500,
         on_select="rerun",
         selection_mode=("points",),
     )
 
-    st.caption("Click a bar to drill into departments • Hover for full title name")
+    # Legend table below chart
+    st.markdown("**Training Title Legend:**")
+    rows_html = ""
+    for _, row in title_slice.iterrows():
+        rows_html += f"""
+        <tr>
+          <td><span class="num-badge">{int(row['#'])}</span></td>
+          <td>{row['Training Title']}</td>
+          <td style="text-align:center;"><b>{int(row['Count'])}</b></td>
+        </tr>
+        """
+    st.markdown(f"""
+        <table class="legend-table">
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>Training Title</th>
+              <th style="width:60px; text-align:center;">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows_html}
+          </tbody>
+        </table>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.caption("Click a bar to drill into departments • Hover bar for full title name")
 
     card_close()
 
-    clicked = get_selected_x(event2)
-    if clicked is not None:
-        go("departments", title=clicked)
+    # Match clicked number label back to title
+    clicked_label = get_selected_x(event2)
+    if clicked_label is not None:
+        matched = title_slice[title_slice["Label"] == str(clicked_label)]
+        if not matched.empty:
+            go("departments", title=matched.iloc[0]["Training Title"])
 
-# ================================================
-# ---------- DEPARTMENTS -------------------------
-# ================================================
-elif st.session_state.screen == "departments":
-    label = get_status_label()
-    title = st.session_state.selected_title
-    crumb(f'Home → {label} → <b>{title}</b> → Departments')
-
-    c1, c2 = st.columns([0.15, 0.85])
-    with c1:
-        if st.button("← Back"):
-            go("titles")
-    with c2:
-        st.markdown(f"### Department vs {label} Count")
-
-    df_current = get_current_df()
-    df_filtered = df_current[df_current["Training Title"].astype(str) == str(title)]
-    dept_counts = (
-        df_filtered.groupby("Department", dropna=False)
-        .size().reset_index(name="Count")
-        .sort_values("Count", ascending=False)
-    )
-
-    if dept_counts.empty:
-        st.info("No records found.")
-        st.stop()
-
-    card_open()
-    fig3 = bar_with_labels(
-        dept_counts, "Department", "Count", "Count",
-        hover_x_name="Department", hover_y_name=f"{label} Count"
-    )
-    event3 = st.plotly_chart(
-        fig3,
-        key=f"dept_chart_{st.session_state.selected_status}",
-        use_container_width=True,
-        height=520,
-        on_select="rerun",
-        selection_mode=("points",),
-    )
-    card_close()
-
-    clicked = get_selected_x(event3)
-    if clicked is not None:
-        go("employees", dept=clicked)
-
-# ================================================
-# ---------- EMPLOYEES ---------------------------
-# ================================================
-elif st.session_state.screen == "employees":
-    label = get_status_label()
-    title = st.session_state.selected_title
-    dept = st.session_state.selected_department
-    crumb(f'Home → {label} → {title} → <b>{dept}</b> → Employees')
-
-    c1, c2 = st.columns([0.15, 0.85])
-    with c1:
-        if st.button("← Back"):
-            go("departments")
-    with c2:
-        st.markdown(f"### Employee Information ({label})")
-
-    df_current = get_current_df()
-    df_emp = df_current[
-        (df_current["Training Title"].astype(str) == str(title)) &
-        (df_current["Department"].astype(str) == str(dept))
-    ].copy()
-
-    show_cols = [
-        "Staff ID", "Employee Name", "Desg Name",
-        "Department", "Training Type", "Training Title", "Status"
-    ]
-    existing_cols = [c for c in show_cols if c in df_emp.columns]
-
-    if df_emp.empty:
-        st.info("No employee records found.")
-        st.stop()
-
-    card_open()
-    st.dataframe(df_emp[existing_cols], use_container_width=True, hide_index=True)
-    st.download_button(
-        label="⬇️ Download as CSV",
-        data=df_emp[existing_cols].to_csv(index=False),
-        file_name=f"{dept}_{title}_employees.csv",
-        mime="text/csv"
-    )
-    card_close()
+# ==============================================
