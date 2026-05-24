@@ -227,19 +227,41 @@ elif st.session_state.screen == "titles":
 
     card_open()
 
-    # Dynamic width for horizontal scroll
-    chart_width = max(800, len(title_counts) * 60)
+    # Each bar = 80px wide (30% thicker), gap increased by 20%
+    bar_width = 0.6        # 30% thicker than default 0.5 (was thin before)
+    bargap = 0.25          # 20% more gap (default is ~0.2)
+    chart_width = max(900, len(title_counts) * 80)
+
     fig2 = bar_with_labels(title_counts, "Training Title", "Count", "Count",
                            hover_x_name="Training Title", hover_y_name=f"{label} Count")
     fig2.update_xaxes(showticklabels=False)
-    fig2.update_layout(width=chart_width)
+    fig2.update_traces(width=bar_width)
+    fig2.update_layout(
+        width=chart_width,
+        bargap=bargap,
+    )
 
-    st.markdown('<div style="overflow-x: auto; width: 100%;">', unsafe_allow_html=True)
-    event2 = st.plotly_chart(fig2, key=f"titles_chart_{st.session_state.selected_status}",
-                             use_container_width=False, height=520,
-                             on_select="rerun", selection_mode=("points",))
+    # Scrollable container with visible scrollbar
+    st.markdown("""
+        <div style="
+            overflow-x: scroll;
+            width: 100%;
+            padding-bottom: 8px;
+            scrollbar-width: thin;
+            scrollbar-color: #888 #f0f0f0;
+        ">
+    """, unsafe_allow_html=True)
+
+    event2 = st.plotly_chart(
+        fig2,
+        key=f"titles_chart_{st.session_state.selected_status}",
+        use_container_width=False,
+        height=520,
+        on_select="rerun",
+        selection_mode=("points",),
+    )
     st.markdown("</div>", unsafe_allow_html=True)
-    st.caption("ℹ️ Scroll right to see all bars • Hover for Training Title names")
+    st.caption("ℹ️ Scroll right to see all bars • Hover bar for Training Title name")
 
     card_close()
 
