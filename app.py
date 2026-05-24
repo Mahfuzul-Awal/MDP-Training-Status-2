@@ -134,6 +134,7 @@ for key, default in [
     ("selected_status", None),
     ("selected_title", None),
     ("selected_department", None),
+    ("page_start", 0),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -247,7 +248,7 @@ elif st.session_state.screen == "titles":
 
     card_open()
 
-    # Row 1: slider + position info
+    # Slider + total count
     col_slider, col_info = st.columns([0.75, 0.25])
     with col_slider:
         bars_per_page = st.slider(
@@ -261,12 +262,8 @@ elif st.session_state.screen == "titles":
     with col_info:
         st.markdown(f"<br>**Total: {total_bars} titles**", unsafe_allow_html=True)
 
-    # Row 2: prev / page indicator / next buttons
+    # Navigation buttons
     max_start = max(0, total_bars - bars_per_page)
-
-    if "page_start" not in st.session_state:
-        st.session_state.page_start = 0
-    # Reset if out of range
     if st.session_state.page_start > max_start:
         st.session_state.page_start = 0
 
@@ -296,28 +293,87 @@ elif st.session_state.screen == "titles":
             st.session_state.page_start = max_start
             st.rerun()
 
-    # Slice the data
+    # Slice data
     start = st.session_state.page_start
-    title_slice = title_counts.iloc[start: start + bars_per_page]
+    title_slice = title_counts.iloc[start: start + bars_per_page].copy()
 
-    fig2 = bar_with_labels(
-        title_slice, "Training Title", "Count", "Count",
-        hover_x_name="Training Title", hover_y_name=f"{label} Count"
+    # Wrap long titles for display inside bars
+    def wrap_title(t, max_chars=18):
+        words = str(t).split()
+        lines, line = [], ""
+        for word in words:
+            if len(line) + len(word) + 1 <= max_chars:
+                line = (line + " " + word).strip()
+            else:
+                if line:
+                    lines.append(line)
+                line = word
+        if line:
+            lines.append(line)
+        return "<br>".join(lines)
+
+    title_slice["Short"] = title_slice["Training Title"].apply(wrap_title)
+
+    # Build chart with titles written vertically inside bars
+    fig2 = px.bar(
+        title_slice,
+        x="Training Title",
+        y="Count",
+        text="Short",
+        custom_data=["Training Title", "Count"],
     )
-    fig2.update_xaxes(showticklabels=False)
-    fig2.update_traces(width=0.6)
-    fig2.update_layout(bargap=0.25)
+
+    fig2.update_traces(
+        # Count number on top
+        textposition="inside",
+        textfont=dict(color="white", size=11),
+        insidetextanchor="start",
+        hovertemplate="<b>%{customdata[0]}</b><br>Count: %{customdata[1]}<extra></extra>",
+        marker_color="#1f77b4",
+        width=0.6,
+        cliponaxis=False,
+    )
+
+    fig2.update_layout(
+        xaxis=dict(
+            showticklabels=False,
+            title="",
+        ),
+        yaxis_title="Count",
+        bargap=0.25,
+        clickmode="event+select",
+        margin=dict(l=10, r=10, t=30, b=10),
+        hoverlabel=dict(font_size=16, bgcolor="white", bordercolor="rgba(0,0,0,0.25)"),
+        uniformtext_minsize=9,
+        uniformtext_mode="hide",
+    )
+
+    # Count labels on top of bars
+    fig2.add_traces(
+        px.scatter(
+            title_slice,
+            x="Training Title",
+            y="Count",
+            text="Count",
+        ).update_traces(
+            mode="text",
+            textposition="top center",
+            textfont=dict(size=13, color="#333"),
+            hoverinfo="skip",
+            showlegend=False,
+        ).data
+    )
 
     event2 = st.plotly_chart(
         fig2,
         key=f"titles_chart_{st.session_state.selected_status}_{start}_{bars_per_page}",
         use_container_width=True,
-        height=520,
+        height=580,
         on_select="rerun",
         selection_mode=("points",),
     )
 
-    st.caption("Hover a bar to see its Training Title name • Use buttons above to navigate")
+    st.caption("Click a bar to drill into departments • Hover for full title name")
 
     card_close()
 
