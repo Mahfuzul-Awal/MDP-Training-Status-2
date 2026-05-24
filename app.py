@@ -48,6 +48,25 @@ st.markdown("""
   }
   .crumb b { color: rgba(0,0,0,0.86); }
   footer { visibility: hidden; }
+  .scroll-wrap {
+    overflow-x: scroll;
+    width: 100%;
+    scroll-behavior: smooth;
+    scrollbar-width: auto;
+    scrollbar-color: #555 #e0e0e0;
+  }
+  .scroll-wrap::-webkit-scrollbar {
+    height: 14px;
+  }
+  .scroll-wrap::-webkit-scrollbar-track {
+    background: #e0e0e0;
+    border-radius: 8px;
+  }
+  .scroll-wrap::-webkit-scrollbar-thumb {
+    background-color: #555;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -247,7 +266,7 @@ elif st.session_state.screen == "titles":
 
     total_bars = len(title_counts)
 
-    # Slider 1 — how many bars to show at once
+    # Slider to control visible window width
     bars_per_page = st.slider(
         "Number of bars to show at once",
         min_value=5,
@@ -257,41 +276,54 @@ elif st.session_state.screen == "titles":
         key=f"slider_{st.session_state.selected_status}"
     )
 
-    # Slider 2 — scroll position
-    max_start = max(0, total_bars - bars_per_page)
-    if max_start == 0:
-        start_index = 0
-    else:
-        start_index = st.select_slider(
-            "↔️ Scroll to see more bars",
-            options=list(range(max_start + 1)),
-            value=0,
-            key=f"scroll_{st.session_state.selected_status}"
-        )
-
-    # Slice data for current window
-    title_slice = title_counts.iloc[start_index: start_index + bars_per_page]
+    # Full chart rendered at total width, windowed by CSS
+    chart_width = max(900, total_bars * 80)
+    visible_width = bars_per_page * 80
 
     fig2 = bar_with_labels(
-        title_slice, "Training Title", "Count", "Count",
+        title_counts, "Training Title", "Count", "Count",
         hover_x_name="Training Title", hover_y_name=f"{label} Count"
     )
     fig2.update_xaxes(showticklabels=False)
     fig2.update_traces(width=0.6)
-    fig2.update_layout(bargap=0.25)
+    fig2.update_layout(
+        bargap=0.25,
+        width=chart_width,
+        height=520,
+    )
+
+    # Top scrollbar mirror div
+    st.markdown(f"""
+        <div style="overflow-x:scroll; width:{visible_width}px; height:14px; scroll-behavior:smooth;"
+             id="top-scroll"
+             onscroll="document.getElementById('chart-scroll').scrollLeft=this.scrollLeft">
+            <div style="width:{chart_width}px; height:1px;"></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Main scrollable chart div
+    st.markdown(f"""
+        <div class="scroll-wrap"
+             id="chart-scroll"
+             style="max-width:{visible_width}px;"
+             onscroll="document.getElementById('top-scroll').scrollLeft=this.scrollLeft">
+    """, unsafe_allow_html=True)
 
     event2 = st.plotly_chart(
         fig2,
-        key=f"titles_chart_{st.session_state.selected_status}_{start_index}_{bars_per_page}",
-        use_container_width=True,
+        key=f"titles_chart_{st.session_state.selected_status}_{bars_per_page}",
+        use_container_width=False,
         height=520,
         on_select="rerun",
         selection_mode=("points",),
     )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.caption(
-        f"Showing bars {start_index + 1}–{min(start_index + bars_per_page, total_bars)} "
-        f"of {total_bars} total • Hover a bar for its Training Title name"
+        f"Total: {total_bars} training titles • "
+        f"Showing {bars_per_page} at a time • "
+        f"Scroll to explore all • Hover a bar for its name"
     )
 
     card_close()
