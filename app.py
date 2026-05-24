@@ -129,7 +129,12 @@ def bar_with_labels(df, xcol, ycol, ytitle, hover_x_name=None, hover_y_name=None
     return fig
 
 # ---------- State ----------
-for key, default in [("screen","home"),("selected_status",None),("selected_title",None),("selected_department",None)]:
+for key, default in [
+    ("screen", "home"),
+    ("selected_status", None),
+    ("selected_title", None),
+    ("selected_department", None),
+]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -167,9 +172,15 @@ def get_current_df():
     return pd.DataFrame()
 
 def get_status_label():
-    return {"done": "Done", "offered": "Offered", "notdone": "Not Done"}.get(st.session_state.selected_status, "")
+    return {
+        "done": "Done",
+        "offered": "Offered",
+        "notdone": "Not Done"
+    }.get(st.session_state.selected_status, "")
 
-# ---------- HOME ----------
+# ================================================
+# ---------- HOME --------------------------------
+# ================================================
 if st.session_state.screen == "home":
     crumb("<b>Home</b>")
 
@@ -183,15 +194,19 @@ if st.session_state.screen == "home":
         "Count": [done_count, offered_count, notdone_count]
     })
     df_top["Percentage"] = df_top["Count"].apply(
-        lambda x: f"{(x/total_count*100):.1f}%" if total_count > 0 else "0.0%"
+        lambda x: f"{(x / total_count * 100):.1f}%" if total_count > 0 else "0.0%"
     )
 
     card_open()
     st.markdown("### Overall Status")
-    fig = bar_with_labels(df_top, "Category", "Count", "Count",
-                          hover_x_name="Status", hover_y_name="Count", pct_col="Percentage")
-    event = st.plotly_chart(fig, key="top_chart", use_container_width=True,
-                            height=520, on_select="rerun", selection_mode=("points",))
+    fig = bar_with_labels(
+        df_top, "Category", "Count", "Count",
+        hover_x_name="Status", hover_y_name="Count", pct_col="Percentage"
+    )
+    event = st.plotly_chart(
+        fig, key="top_chart", use_container_width=True,
+        height=520, on_select="rerun", selection_mode=("points",)
+    )
     card_close()
 
     clicked = get_selected_x(event)
@@ -202,7 +217,9 @@ if st.session_state.screen == "home":
     elif clicked == "Not Done":
         go("titles", status="notdone")
 
-# ---------- TITLES ----------
+# ================================================
+# ---------- TITLES ------------------------------
+# ================================================
 elif st.session_state.screen == "titles":
     label = get_status_label()
     crumb(f'Home → <b>{label}</b> → Training Titles')
@@ -219,6 +236,7 @@ elif st.session_state.screen == "titles":
         df_current.groupby("Training Title", dropna=False)
         .size().reset_index(name="Count")
         .sort_values("Count", ascending=False)
+        .reset_index(drop=True)
     )
 
     if title_counts.empty:
@@ -227,41 +245,54 @@ elif st.session_state.screen == "titles":
 
     card_open()
 
-    # Each bar = 80px wide (30% thicker), gap increased by 20%
-    bar_width = 0.6        # 30% thicker than default 0.5 (was thin before)
-    bargap = 0.25          # 20% more gap (default is ~0.2)
-    chart_width = max(900, len(title_counts) * 80)
+    total_bars = len(title_counts)
 
-    fig2 = bar_with_labels(title_counts, "Training Title", "Count", "Count",
-                           hover_x_name="Training Title", hover_y_name=f"{label} Count")
-    fig2.update_xaxes(showticklabels=False)
-    fig2.update_traces(width=bar_width)
-    fig2.update_layout(
-        width=chart_width,
-        bargap=bargap,
+    # Slider 1 — how many bars to show at once
+    bars_per_page = st.slider(
+        "Number of bars to show at once",
+        min_value=5,
+        max_value=min(30, total_bars),
+        value=min(15, total_bars),
+        step=1,
+        key=f"slider_{st.session_state.selected_status}"
     )
 
-    # Scrollable container with visible scrollbar
-    st.markdown("""
-        <div style="
-            overflow-x: scroll;
-            width: 100%;
-            padding-bottom: 8px;
-            scrollbar-width: thin;
-            scrollbar-color: #888 #f0f0f0;
-        ">
-    """, unsafe_allow_html=True)
+    # Slider 2 — scroll position
+    max_start = max(0, total_bars - bars_per_page)
+    if max_start == 0:
+        start_index = 0
+    else:
+        start_index = st.select_slider(
+            "↔️ Scroll to see more bars",
+            options=list(range(max_start + 1)),
+            value=0,
+            key=f"scroll_{st.session_state.selected_status}"
+        )
+
+    # Slice data for current window
+    title_slice = title_counts.iloc[start_index: start_index + bars_per_page]
+
+    fig2 = bar_with_labels(
+        title_slice, "Training Title", "Count", "Count",
+        hover_x_name="Training Title", hover_y_name=f"{label} Count"
+    )
+    fig2.update_xaxes(showticklabels=False)
+    fig2.update_traces(width=0.6)
+    fig2.update_layout(bargap=0.25)
 
     event2 = st.plotly_chart(
         fig2,
-        key=f"titles_chart_{st.session_state.selected_status}",
-        use_container_width=False,
+        key=f"titles_chart_{st.session_state.selected_status}_{start_index}_{bars_per_page}",
+        use_container_width=True,
         height=520,
         on_select="rerun",
         selection_mode=("points",),
     )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.caption("ℹ️ Scroll right to see all bars • Hover bar for Training Title name")
+
+    st.caption(
+        f"Showing bars {start_index + 1}–{min(start_index + bars_per_page, total_bars)} "
+        f"of {total_bars} total • Hover a bar for its Training Title name"
+    )
 
     card_close()
 
@@ -269,7 +300,9 @@ elif st.session_state.screen == "titles":
     if clicked is not None:
         go("departments", title=clicked)
 
-# ---------- DEPARTMENTS ----------
+# ================================================
+# ---------- DEPARTMENTS -------------------------
+# ================================================
 elif st.session_state.screen == "departments":
     label = get_status_label()
     title = st.session_state.selected_title
@@ -295,18 +328,27 @@ elif st.session_state.screen == "departments":
         st.stop()
 
     card_open()
-    fig3 = bar_with_labels(dept_counts, "Department", "Count", "Count",
-                           hover_x_name="Department", hover_y_name=f"{label} Count")
-    event3 = st.plotly_chart(fig3, key=f"dept_chart_{st.session_state.selected_status}",
-                             use_container_width=True, height=520,
-                             on_select="rerun", selection_mode=("points",))
+    fig3 = bar_with_labels(
+        dept_counts, "Department", "Count", "Count",
+        hover_x_name="Department", hover_y_name=f"{label} Count"
+    )
+    event3 = st.plotly_chart(
+        fig3,
+        key=f"dept_chart_{st.session_state.selected_status}",
+        use_container_width=True,
+        height=520,
+        on_select="rerun",
+        selection_mode=("points",),
+    )
     card_close()
 
     clicked = get_selected_x(event3)
     if clicked is not None:
         go("employees", dept=clicked)
 
-# ---------- EMPLOYEES ----------
+# ================================================
+# ---------- EMPLOYEES ---------------------------
+# ================================================
 elif st.session_state.screen == "employees":
     label = get_status_label()
     title = st.session_state.selected_title
@@ -326,8 +368,10 @@ elif st.session_state.screen == "employees":
         (df_current["Department"].astype(str) == str(dept))
     ].copy()
 
-    show_cols = ["Staff ID", "Employee Name", "Desg Name", "Department",
-                 "Training Type", "Training Title", "Status"]
+    show_cols = [
+        "Staff ID", "Employee Name", "Desg Name",
+        "Department", "Training Type", "Training Title", "Status"
+    ]
     existing_cols = [c for c in show_cols if c in df_emp.columns]
 
     if df_emp.empty:
@@ -336,7 +380,6 @@ elif st.session_state.screen == "employees":
 
     card_open()
     st.dataframe(df_emp[existing_cols], use_container_width=True, hide_index=True)
-
     st.download_button(
         label="⬇️ Download as CSV",
         data=df_emp[existing_cols].to_csv(index=False),
